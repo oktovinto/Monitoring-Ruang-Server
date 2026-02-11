@@ -7,6 +7,67 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase SDK as ES module
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        
+        // Make Firebase available globally
+        window.firebaseApp = null;
+        window.db = null;
+        window.firebaseFunctions = {
+            addDoc,
+            getDocs,
+            updateDoc,
+            deleteDoc,
+            doc,
+            collection,
+            query,
+            orderBy,
+            onSnapshot,
+            serverTimestamp
+        };
+        
+        // Firebase Configuration - REPLACE WITH YOUR OWN CONFIG
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        
+        // Initialize Firebase
+        async function initializeFirebase() {
+            try {
+                // Check if config is set
+                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    console.log('Firebase config needs to be configured');
+                    document.getElementById('firebaseStatus').innerHTML = '<span style="color: orange;">⚠️ Firebase belum dikonfigurasi</span>';
+                    return false;
+                }
+                
+                window.firebaseApp = initializeApp(firebaseConfig);
+                window.db = getFirestore(window.firebaseApp);
+                
+                // Check connection
+                const testQuery = query(collection(window.db, 'monitoring_data'), orderBy('createdAt', 'desc'));
+                await getDocs(testQuery);
+                
+                document.getElementById('firebaseStatus').innerHTML = '<span style="color: green;">🟢 Firebase Terhubung</span>';
+                return true;
+            } catch (error) {
+                console.error('Firebase initialization error:', error);
+                document.getElementById('firebaseStatus').innerHTML = '<span style="color: red;">🔴 Firebase Error: ' + error.message + '</span>';
+                return false;
+            }
+        }
+        
+        window.initializeFirebase = initializeFirebase;
+    </script>
 </head>
 <body>
     <div class="container">
@@ -19,6 +80,7 @@
                 </div>
                 <div class="header-info">
                     <span class="date-display" id="currentDate"></span>
+                    <span id="firebaseStatus" style="font-size: 0.8rem; margin-left: 15px;">🔄 Loading...</span>
                 </div>
             </div>
         </header>
@@ -41,13 +103,16 @@
                 <i class="fas fa-chart-bar"></i>
                 Laporan
             </button>
+            <button class="nav-tab" data-tab="config">
+                <i class="fas fa-cog"></i>
+                Konfigurasi
+            </button>
         </nav>
 
         <!-- Main Content -->
         <main class="main-content">
             <!-- Dashboard Section -->
             <section class="tab-content active" id="dashboard">
-                <!-- Status Cards -->
                 <div class="status-cards">
                     <div class="status-card temperature">
                         <div class="card-icon">
@@ -91,7 +156,6 @@
                     </div>
                 </div>
 
-                <!-- Charts -->
                 <div class="charts-container">
                     <div class="chart-card">
                         <div class="chart-header">
@@ -116,7 +180,6 @@
                     </div>
                 </div>
 
-                <!-- Quick Stats -->
                 <div class="quick-stats">
                     <div class="quick-stat-card">
                         <h4><i class="fas fa-exclamation-triangle"></i> Peringatan Aktif</h4>
@@ -129,6 +192,10 @@
                     <div class="quick-stat-card">
                         <h4><i class="fas fa-clock"></i> Update Terakhir</h4>
                         <p class="time" id="lastUpdate">--:--</p>
+                    </div>
+                    <div class="quick-stat-card">
+                        <h4><i class="fas fa-users"></i> Online</h4>
+                        <p class="count" id="onlineUsers">1</p>
                     </div>
                 </div>
             </section>
@@ -258,7 +325,6 @@
                         </div>
                     </div>
 
-                    <!-- Filter -->
                     <div class="filter-section">
                         <div class="filter-group">
                             <label><i class="fas fa-filter"></i> Filter:</label>
@@ -280,7 +346,6 @@
                         </button>
                     </div>
 
-                    <!-- Data Table -->
                     <div class="table-container">
                         <table class="data-table" id="dataTable">
                             <thead>
@@ -298,14 +363,15 @@
                                 </tr>
                             </thead>
                             <tbody id="tableBody">
-                                <!-- Data will be inserted here -->
                             </tbody>
                         </table>
+                        <div id="loadingIndicator" style="text-align: center; padding: 40px;">
+                            <i class="fas fa-spinner fa-spin" style="font-size: 2rem; color: var(--primary-color);"></i>
+                            <p style="margin-top: 10px;">Memuat data...</p>
+                        </div>
                     </div>
 
-                    <!-- Pagination -->
                     <div class="pagination" id="pagination">
-                        <!-- Pagination will be inserted here -->
                     </div>
                 </div>
             </section>
@@ -331,7 +397,6 @@
                         </div>
                     </div>
 
-                    <!-- Monthly Summary Cards -->
                     <div class="monthly-summary">
                         <div class="summary-card">
                             <h4><i class="fas fa-clipboard-list"></i> Total Pencatatan</h4>
@@ -353,7 +418,6 @@
                         </div>
                     </div>
 
-                    <!-- Monthly Stats -->
                     <div class="monthly-stats">
                         <div class="stat-group">
                             <h4><i class="fas fa-temperature-high"></i> Suhu</h4>
@@ -408,7 +472,6 @@
                         </div>
                     </div>
 
-                    <!-- Monthly Charts -->
                     <div class="charts-container">
                         <div class="chart-card">
                             <div class="chart-header">
@@ -427,30 +490,59 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </section>
 
-                    <!-- Monthly Data Table -->
-                    <div class="monthly-table-section">
-                        <h3><i class="fas fa-table"></i> Data Detail Bulan Ini</h3>
-                        <div class="table-container">
-                            <table class="data-table" id="monthlyDataTable">
-                                <thead>
-                                    <tr>
-                                        <th>No</th>
-                                        <th>Tanggal</th>
-                                        <th>Waktu</th>
-                                        <th>Suhu (°C)</th>
-                                        <th>Kelembaban (%)</th>
-                                        <th>Status AC</th>
-                                        <th>Status UPS</th>
-                                        <th>Server Aktif</th>
-                                        <th>Daya (kW)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="monthlyTableBody">
-                                    <!-- Data will be inserted here -->
-                                </tbody>
-                            </table>
+            <!-- Config Section -->
+            <section class="tab-content" id="config">
+                <div class="input-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-cog"></i> Konfigurasi Firebase</h2>
+                    </div>
+                    
+                    <div class="config-info">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <p><strong>Untuk mengaktifkan database real-time:</strong></p>
+                            <ol>
+                                <li>Buka <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
+                                <li>Buat project baru atau pilih project yang ada</li>
+                                <li>Tambahkan aplikasi web (icon "</>")</li>
+                                <li>Copy konfigurasi Firebase yang diberikan</li>
+                                <li>Edit file <code>index.html</code> dan replace konfigurasi di bagian Firebase Config</li>
+                                <li>Di Firestore Database, buat database dan atur rules agar terbuka untuk publik (untuk testing)</li>
+                            </ol>
                         </div>
+                        
+                        <div class="form-group full-width">
+                            <label for="firebaseApiKey"><i class="fas fa-key"></i> API Key</label>
+                            <input type="text" id="firebaseApiKey" placeholder="YOUR_API_KEY">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="firebaseProjectId"><i class="fas fa-project-diagram"></i> Project ID</label>
+                            <input type="text" id="firebaseProjectId" placeholder="YOUR_PROJECT_ID">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="firebaseConfig"><i class="fas fa-code"></i> Full Config (JSON)</label>
+                            <textarea id="firebaseConfig" rows="6" placeholder='{
+  "apiKey": "...",
+  "authDomain": "...",
+  "projectId": "...",
+  "storageBucket": "...",
+  "messagingSenderId": "...",
+  "appId": "..."
+}'></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="button" id="saveFirebaseConfig" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Simpan Konfigurasi
+                            </button>
+                            <button type="button" id="testFirebaseConnection" class="btn btn-secondary">
+                                <i class="fas fa-plug"></i> Test Koneksi
+                            </button>
+                        </div>
+                        
+                        <div id="configStatus" style="margin-top: 20px;"></div>
                     </div>
                 </div>
             </section>
@@ -458,7 +550,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>&copy; 2024 Monitoring Ruang Server - Sistem Monitoring Terintegrasi</p>
+            <p>&copy; 2024 Monitoring Ruang Server - Sistem Monitoring Terintegrasi dengan Firebase</p>
         </footer>
     </div>
 

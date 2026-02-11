@@ -1,4 +1,4 @@
-// Server Room Monitoring Web Application with Database Support
+// Server Room Monitoring Web Application with Firebase
 // =========================================
 
 // Data Storage
@@ -10,406 +10,195 @@ let monthlyStatusChart = null;
 let currentPage = 1;
 const itemsPerPage = 10;
 
-// Database Configuration
-const DB_NAME = 'ServerMonitoringDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'monitoring_data';
-const MONTHLY_STORE = 'monthly_aggregates';
+// Firebase Configuration - Will be loaded from index.html
 let db = null;
+let firebaseInitialized = false;
 
 // Initialize Application
-document.addEventListener('DOMContentLoaded', function() {
-    initializeDatabase().then(() => {
-        loadDataFromDatabase();
-        initializeDate();
-        initializeTabs();
-        initializeForm();
-        initializeCharts();
-        initializeFilters();
-        initializeExportButtons();
-        initializeMonthlyReports();
-        updateDashboard();
-        renderTable();
-    });
+document.addEventListener('DOMContentLoaded', async function() {
+    // Wait for Firebase to initialize
+    await waitForFirebase();
+    
+    if (firebaseInitialized) {
+        loadDataFromFirebase();
+    } else {
+        // Fallback to local mode
+        console.log('Running in offline mode');
+        loadDataFromLocal();
+    }
+    
+    initializeDate();
+    initializeTabs();
+    initializeForm();
+    initializeCharts();
+    initializeFilters();
+    initializeExportButtons();
+    initializeMonthlyReports();
+    updateDashboard();
+    renderTable();
 });
 
-// ==================== DATABASE FUNCTIONS ====================
-
-// Initialize IndexedDB Database
-function initializeDatabase() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        request.onerror = (event) => {
-            console.error('Database error:', event.target.error);
-            // Fallback to localStorage
-            resolve();
-        };
-        
-        request.onsuccess = (event) => {
-            db = event.target.result;
-            console.log('Database initialized successfully');
-            resolve();
-        };
-        
-        request.onupgradeneeded = (event) => {
-            const database = event.target.result;
-            
-            // Create main monitoring data store
-            if (!database.objectStoreNames.contains(STORE_NAME)) {
-                const objectStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                objectStore.createIndex('date', 'date', { unique: false });
-                objectStore.createIndex('monthYear', 'monthYear', { unique: false });
-                objectStore.createIndex('timestamp', 'timestamp', { unique: false });
-            }
-            
-            // Create monthly aggregates store
-            if (!database.objectStoreNames.contains(MONTHLY_STORE)) {
-                const monthlyStore = database.createObjectStore(MONTHLY_STORE, { keyPath: 'monthYear' });
-                monthlyStore.createIndex('year', 'year', { unique: false });
-                monthlyStore.createIndex('month', 'month', { unique: false });
-            }
-        };
-    });
-}
-
-// Add data to database
-function addDataToDatabase(data) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            // Fallback to localStorage
-            monitoringData.unshift(data);
-            saveDataToStorage();
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        
-        // Add timestamp and monthYear for querying
-        const dbData = {
-            ...data,
-            timestamp: new Date(data.date + ' ' + data.time).getTime(),
-            monthYear: data.date.substring(0, 7) // YYYY-MM format
-        };
-        
-        const request = store.add(dbData);
-        
-        request.onsuccess = () => {
-            updateMonthlyAggregate(data.date.substring(0, 7));
-            resolve();
-        };
-        
-        request.onerror = (event) => {
-            console.error('Error adding data:', event.target.error);
-            reject(event.target.error);
-        };
-    });
-}
-
-// Load all data from database
-function loadDataFromDatabase() {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            // Fallback to localStorage
-            loadDataFromStorage();
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.getAll();
-        
-        request.onsuccess = () => {
-            monitoringData = request.result.sort((a, b) => b.timestamp - a.timestamp);
-            
-            // Do NOT generate sample data - let user start fresh
-            // if (monitoringData.length === 0) {
-            //     monitoringData = generateSampleData();
-            //     bulkInsertData(monitoringData).then(() => {
-            //         resolve();
-            //     });
-            // } else {
-            resolve();
-            // }
-        };
-        
-        request.onerror = (event) => {
-            console.error('Error loading data:', event.target.error);
-            // Fallback to localStorage
-            loadDataFromStorage();
-            resolve();
-        };
-    });
-}
-
-// Bulk insert data to database
-function bulkInsertData(dataArray) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            dataArray.forEach(data => monitoringData.unshift(data));
-            saveDataToStorage();
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        
-        dataArray.forEach((data, index) => {
-            const dbData = {
-                ...data,
-                timestamp: new Date(data.date + ' ' + data.time).getTime(),
-                monthYear: data.date.substring(0, 7)
-            };
-            store.put(dbData);
-        });
-        
-        transaction.oncomplete = () => {
-            // Update monthly aggregates for all months
-            const months = [...new Set(dataArray.map(d => d.date.substring(0, 7)))];
-            months.forEach(month => updateMonthlyAggregate(month));
-            resolve();
-        };
-        
-        transaction.onerror = (event) => {
-            console.error('Error bulk inserting:', event.target.error);
-            reject(event.target.error);
-        };
-    });
-}
-
-// Get data by month from database
-function getDataByMonth(monthYear) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            const filtered = monitoringData.filter(d => d.date.startsWith(monthYear));
-            resolve(filtered);
-            return;
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const index = store.index('monthYear');
-        const request = index.getAll(monthYear);
-        
-        request.onsuccess = () => {
-            const sorted = request.result.sort((a, b) => b.timestamp - a.timestamp);
-            resolve(sorted);
-        };
-        
-        request.onerror = (event) => {
-            console.error('Error getting data by month:', event.target.error);
-            reject(event.target.error);
-        };
-    });
-}
-
-// Update monthly aggregate
-function updateMonthlyAggregate(monthYear) {
-    if (!db) return;
-    
-    getDataByMonth(monthYear).then(data => {
-        if (data.length === 0) return;
-        
-        const year = parseInt(monthYear.substring(0, 4));
-        const month = parseInt(monthYear.substring(5, 7));
-        
-        // Calculate aggregates
-        const avgTemp = data.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / data.length;
-        const avgHumidity = data.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / data.length;
-        const avgPower = data.reduce((sum, d) => sum + parseFloat(d.powerUsage), 0) / data.length;
-        const totalRecords = data.length;
-        
-        // Calculate min/max
-        const temps = data.map(d => parseFloat(d.temperature));
-        const humidities = data.map(d => parseFloat(d.humidity));
-        const minTemp = Math.min(...temps);
-        const maxTemp = Math.max(...temps);
-        const minHumidity = Math.min(...humidities);
-        const maxHumidity = Math.max(...humidities);
-        
-        // Count status occurrences
-        let normalDays = 0, warningDays = 0, dangerDays = 0;
-        data.forEach(d => {
-            if (parseFloat(d.temperature) > 28 || parseFloat(d.humidity) > 70) {
-                dangerDays++;
-            } else if (parseFloat(d.temperature) > 25 || parseFloat(d.humidity) > 60) {
-                warningDays++;
-            } else {
-                normalDays++;
-            }
-        });
-        
-        // Count equipment issues
-        let acIssues = data.filter(d => d.acStatus === 'rusak' || d.acStatus === 'maintenance').length;
-        let upsIssues = data.filter(d => d.upsStatus === 'rusak' || d.upsStatus === 'maintenance' || d.upsStatus === 'low_battery').length;
-        
-        const aggregate = {
-            monthYear,
-            year,
-            month,
-            avgTemp: avgTemp.toFixed(2),
-            avgHumidity: avgHumidity.toFixed(2),
-            avgPower: avgPower.toFixed(2),
-            minTemp: minTemp.toFixed(1),
-            maxTemp: maxTemp.toFixed(1),
-            minHumidity: minHumidity.toFixed(1),
-            maxHumidity: maxHumidity.toFixed(1),
-            totalRecords,
-            normalDays,
-            warningDays,
-            dangerDays,
-            acIssues,
-            upsIssues,
-            lastUpdated: new Date().toISOString()
-        };
-        
-        // Save to monthly store
-        const transaction = db.transaction([MONTHLY_STORE], 'readwrite');
-        const store = transaction.objectStore(MONTHLY_STORE);
-        store.put(aggregate);
-    });
-}
-
-// Get monthly aggregates
-function getMonthlyAggregates() {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            // Calculate from local data
-            const aggregates = calculateLocalAggregates();
-            resolve(aggregates);
-            return;
-        }
-        
-        const transaction = db.transaction([MONTHLY_STORE], 'readonly');
-        const store = transaction.objectStore(MONTHLY_STORE);
-        const request = store.getAll();
-        
-        request.onsuccess = () => {
-            const sorted = request.result.sort((a, b) => b.monthYear.localeCompare(a.monthYear));
-            resolve(sorted);
-        };
-        
-        request.onerror = (event) => {
-            console.error('Error getting monthly aggregates:', event.target.error);
-            const aggregates = calculateLocalAggregates();
-            resolve(aggregates);
-        };
-    });
-}
-
-// Calculate aggregates from local data (fallback)
-function calculateLocalAggregates() {
-    const monthGroups = {};
-    
-    monitoringData.forEach(data => {
-        const monthYear = data.date.substring(0, 7);
-        if (!monthGroups[monthYear]) {
-            monthGroups[monthYear] = [];
-        }
-        monthGroups[monthYear].push(data);
-    });
-    
-    const aggregates = Object.entries(monthGroups).map(([monthYear, data]) => {
-        const year = parseInt(monthYear.substring(0, 4));
-        const month = parseInt(monthYear.substring(5, 7));
-        
-        const avgTemp = data.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / data.length;
-        const avgHumidity = data.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / data.length;
-        const avgPower = data.reduce((sum, d) => sum + parseFloat(d.powerUsage), 0) / data.length;
-        const totalRecords = data.length;
-        
-        const temps = data.map(d => parseFloat(d.temperature));
-        const humidities = data.map(d => parseFloat(d.humidity));
-        
-        let normalDays = 0, warningDays = 0, dangerDays = 0;
-        data.forEach(d => {
-            if (parseFloat(d.temperature) > 28 || parseFloat(d.humidity) > 70) {
-                dangerDays++;
-            } else if (parseFloat(d.temperature) > 25 || parseFloat(d.humidity) > 60) {
-                warningDays++;
-            } else {
-                normalDays++;
-            }
-        });
-        
-        return {
-            monthYear,
-            year,
-            month,
-            avgTemp: avgTemp.toFixed(2),
-            avgHumidity: avgHumidity.toFixed(2),
-            avgPower: avgPower.toFixed(2),
-            minTemp: Math.min(...temps).toFixed(1),
-            maxTemp: Math.max(...temps).toFixed(1),
-            minHumidity: Math.min(...humidities).toFixed(1),
-            maxHumidity: Math.max(...humidities).toFixed(1),
-            totalRecords,
-            normalDays,
-            warningDays,
-            dangerDays
-        };
-    });
-    
-    return aggregates.sort((a, b) => b.monthYear.localeCompare(a.monthYear));
-}
-
-// Get available months
-function getAvailableMonths() {
+// Wait for Firebase SDK to load
+function waitForFirebase() {
     return new Promise((resolve) => {
-        if (!db) {
-            const months = [...new Set(monitoringData.map(d => d.date.substring(0, 7)))];
-            resolve(months.sort().reverse());
-            return;
-        }
+        const checkInterval = setInterval(() => {
+            if (window.firebaseFunctions && window.db) {
+                clearInterval(checkInterval);
+                firebaseInitialized = true;
+                resolve();
+            }
+        }, 100);
         
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const store = transaction.objectStore(STORE_NAME);
-        const index = store.index('monthYear');
-        const request = index.getAllKeys();
-        
-        request.onsuccess = () => {
-            const months = [...new Set(request.result)];
-            resolve(months.sort().reverse());
-        };
-        
-        request.onerror = () => {
-            const months = [...new Set(monitoringData.map(d => d.date.substring(0, 7)))];
-            resolve(months.sort().reverse());
-        };
+        // Timeout after 5 seconds
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            resolve();
+        }, 5000);
     });
 }
 
-// Delete data from database
-function deleteDataFromDatabase(id) {
-    return new Promise((resolve, reject) => {
-        if (!db) {
-            monitoringData = monitoringData.filter(d => d.id !== id);
-            saveDataToStorage();
-            resolve();
-            return;
-        }
-        
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(id);
-        
-        request.onsuccess = () => {
-            // Update monthly aggregate
-            const data = monitoringData.find(d => d.id === id);
-            if (data) {
-                updateMonthlyAggregate(data.date.substring(0, 7));
+// ==================== FIREBASE FUNCTIONS ====================
+
+function loadDataFromFirebase() {
+    if (!window.db) {
+        loadDataFromLocal();
+        return;
+    }
+    
+    const { collection, query, orderBy, getDocs } = window.firebaseFunctions;
+    
+    const q = query(collection(window.db, 'monitoring_data'), orderBy('createdAt', 'desc'));
+    
+    getDocs(q)
+        .then((snapshot) => {
+            monitoringData = [];
+            snapshot.forEach((doc) => {
+                monitoringData.push({ id: doc.id, ...doc.data() });
+            });
+            
+            document.getElementById('loadingIndicator').style.display = 'none';
+            
+            // If no data, show empty state
+            if (monitoringData.length === 0) {
+                renderTable();
             }
-            resolve();
-        };
-        
-        request.onerror = (event) => {
-            reject(event.target.error);
-        };
+        })
+        .catch((error) => {
+            console.error('Error loading data:', error);
+            document.getElementById('loadingIndicator').innerHTML = `
+                <i class="fas fa-exclamation-triangle" style="font-size: 2rem; color: var(--danger-color);"></i>
+                <p style="margin-top: 10px; color: var(--danger-color);">Error memuat data: ${error.message}</p>
+            `;
+            loadDataFromLocal();
+        });
+}
+
+async function addDataToFirebase(data) {
+    if (!window.db) {
+        monitoringData.unshift(data);
+        saveDataToLocal();
+        return;
+    }
+    
+    const { collection, addDoc, serverTimestamp } = window.firebaseFunctions;
+    
+    const docData = {
+        ...data,
+        createdAt: serverTimestamp()
+    };
+    
+    await addDoc(collection(window.db, 'monitoring_data'), docData);
+}
+
+async function updateDataInFirebase(id, data) {
+    if (!window.db) {
+        const index = monitoringData.findIndex(d => d.id === id);
+        if (index !== -1) {
+            monitoringData[index] = { ...monitoringData[index], ...data };
+            saveDataToLocal();
+        }
+        return;
+    }
+    
+    const { doc, updateDoc, serverTimestamp } = window.firebaseFunctions;
+    
+    await updateDoc(doc(window.db, 'monitoring_data', id), {
+        ...data,
+        updatedAt: serverTimestamp()
     });
+}
+
+async function deleteDataFromFirebase(id) {
+    if (!window.db) {
+        monitoringData = monitoringData.filter(d => d.id !== id);
+        saveDataToLocal();
+        return;
+    }
+    
+    const { doc, deleteDoc } = window.firebaseFunctions;
+    
+    await deleteDoc(doc(window.db, 'monitoring_data', id));
+}
+
+async function clearAllDataInFirebase() {
+    if (!window.db) {
+        monitoringData = [];
+        localStorage.removeItem('serverMonitoringData');
+        return;
+    }
+    
+    const { collection, getDocs, deleteDoc } = window.firebaseFunctions;
+    
+    const snapshot = await getDocs(collection(window.db, 'monitoring_data'));
+    
+    const deletePromises = [];
+    snapshot.forEach((docSnapshot) => {
+        deletePromises.push(deleteDoc(doc(window.db, 'monitoring_data', docSnapshot.id)));
+    });
+    
+    await Promise.all(deletePromises);
+    monitoringData = [];
+}
+
+async function getDataByMonthFromFirebase(monthYear) {
+    if (!window.db) {
+        return monitoringData.filter(d => d.date.startsWith(monthYear));
+    }
+    
+    const { collection, query, where, orderBy, getDocs } = window.firebaseFunctions;
+    
+    const startDate = monthYear + '-01';
+    const endDate = monthYear + '-31';
+    
+    const q = query(
+        collection(window.db, 'monitoring_data'),
+        where('date', '>=', startDate),
+        where('date', '<=', endDate),
+        orderBy('date', 'desc')
+    );
+    
+    const snapshot = await getDocs(q);
+    const data = [];
+    snapshot.forEach((doc) => {
+        data.push({ id: doc.id, ...doc.data() });
+    });
+    
+    return data;
+}
+
+// ==================== LOCAL FUNCTIONS (FALLBACK) ====================
+
+function loadDataFromLocal() {
+    const stored = localStorage.getItem('serverMonitoringData');
+    if (stored) {
+        monitoringData = JSON.parse(stored);
+    }
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('firebaseStatus').innerHTML = '<span style="color: orange;">⚠️ Mode Offline</span>';
+}
+
+function saveDataToLocal() {
+    localStorage.setItem('serverMonitoringData', JSON.stringify(monitoringData));
 }
 
 // ==================== UTILITY FUNCTIONS ====================
@@ -480,51 +269,6 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// ==================== LOCAL STORAGE FUNCTIONS (FALLBACK) ====================
-
-function loadDataFromStorage() {
-    const stored = localStorage.getItem('serverMonitoringData');
-    if (stored) {
-        monitoringData = JSON.parse(stored);
-    } else {
-        monitoringData = generateSampleData();
-        saveDataToStorage();
-    }
-}
-
-function saveDataToStorage() {
-    localStorage.setItem('serverMonitoringData', JSON.stringify(monitoringData));
-}
-
-function generateSampleData() {
-    const sampleData = [];
-    const statuses = ['normal', 'warning', 'danger'];
-    const acStatuses = ['normal', 'maintenance', 'rusak'];
-    const upsStatuses = ['normal', 'low_battery', 'maintenance', 'rusak'];
-    
-    for (let i = 30; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        
-        sampleData.push({
-            id: generateId(),
-            date: date.toISOString().split('T')[0],
-            time: '08:00',
-            temperature: (22 + Math.random() * 4).toFixed(1),
-            humidity: (45 + Math.random() * 20).toFixed(1),
-            acStatus: acStatuses[Math.floor(Math.random() * acStatuses.length)],
-            upsStatus: upsStatuses[Math.floor(Math.random() * upsStatuses.length)],
-            rackCount: Math.floor(Math.random() * 5) + 3,
-            activeServers: Math.floor(Math.random() * 20) + 10,
-            powerUsage: (3 + Math.random() * 5).toFixed(2),
-            fireExtinguisher: 'siap',
-            notes: 'Pemeriksaan rutin'
-        });
-    }
-    
-    return sampleData.sort((a, b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
-}
-
 // ==================== INITIALIZATION FUNCTIONS ====================
 
 function initializeDate() {
@@ -567,7 +311,7 @@ function initializeTabs() {
     });
 }
 
-function initializeForm() {
+async function initializeForm() {
     const form = document.getElementById('monitoringForm');
     
     form.addEventListener('submit', async function(e) {
@@ -590,8 +334,8 @@ function initializeForm() {
         
         monitoringData.unshift(formData);
         
-        // Save to database
-        await addDataToDatabase(formData);
+        // Save to Firebase
+        await addDataToFirebase(formData);
         
         showToast('Data monitoring berhasil disimpan!');
         
@@ -602,6 +346,7 @@ function initializeForm() {
         document.getElementById('entryTime').value = now.toTimeString().slice(0, 5);
         
         updateDashboard();
+        renderTable();
     });
 }
 
@@ -677,37 +422,6 @@ function initializeFilters() {
     document.getElementById('applyFilter').addEventListener('click', applyFilters);
     document.getElementById('resetFilter').addEventListener('click', resetFilters);
     document.getElementById('clearAllData').addEventListener('click', clearAllData);
-}
-
-// Clear all data function
-async function clearAllData() {
-    if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
-        return;
-    }
-    
-    // Clear IndexedDB
-    if (db) {
-        const transaction = db.transaction([STORE_NAME, MONTHLY_STORE], 'readwrite');
-        transaction.objectStore(STORE_NAME).clear();
-        transaction.objectStore(MONTHLY_STORE).clear();
-        
-        transaction.oncomplete = () => {
-            monitoringData = [];
-            localStorage.removeItem('serverMonitoringData');
-            showToast('Semua data berhasil dihapus!');
-            updateDashboard();
-            renderTable();
-            location.reload();
-        };
-    } else {
-        // Fallback to localStorage
-        monitoringData = [];
-        localStorage.removeItem('serverMonitoringData');
-        showToast('Semua data berhasil dihapus!');
-        updateDashboard();
-        renderTable();
-        location.reload();
-    }
 }
 
 function initializeExportButtons() {
@@ -800,7 +514,7 @@ async function loadMonthlyReports() {
     
     // Populate month selector if empty
     if (monthSelect.options.length <= 1) {
-        const months = await getAvailableMonths();
+        const months = getAvailableMonths();
         months.forEach(month => {
             const option = document.createElement('option');
             option.value = month;
@@ -809,26 +523,27 @@ async function loadMonthlyReports() {
         });
     }
     
-    // If no month selected and no data available, show empty state
-    const availableMonths = await getAvailableMonths();
+    const availableMonths = getAvailableMonths();
     if (availableMonths.length === 0) {
-        document.getElementById('monthlySummary').innerHTML = '<p style="text-align: center; padding: 40px; color: var(--text-secondary);">Tidak ada data tersedia</p>';
         resetMonthlyStats();
         return;
     }
     
     const selectedMonth = monthSelect.value || availableMonths[0];
     
-    // Ensure the dropdown has a valid selection
     if (!monthSelect.value && availableMonths.length > 0) {
         monthSelect.value = availableMonths[0];
     }
     
     // Get data for selected month
-    const monthData = await getDataByMonth(selectedMonth);
+    let monthData;
+    if (firebaseInitialized) {
+        monthData = await getDataByMonthFromFirebase(selectedMonth);
+    } else {
+        monthData = monitoringData.filter(d => d.date.startsWith(selectedMonth));
+    }
     
     if (monthData.length === 0) {
-        document.getElementById('monthlySummary').innerHTML = '<p style="text-align: center; padding: 40px; color: var(--text-secondary);">Tidak ada data untuk bulan ini</p>';
         resetMonthlyStats();
         return;
     }
@@ -873,58 +588,26 @@ async function loadMonthlyReports() {
     document.getElementById('monthlyACIssues').textContent = acIssues;
     document.getElementById('monthlyUPSIssues').textContent = upsIssues;
     
-    // Update status
     document.getElementById('monthlyTempStatus').textContent = getStatusText(avgTemp, 'temperature');
     document.getElementById('monthlyTempStatus').className = 'status-badge ' + getStatusClass(avgTemp, 'temperature');
     
     document.getElementById('monthlyHumidityStatus').textContent = getStatusText(avgHumidity, 'humidity');
     document.getElementById('monthlyHumidityStatus').className = 'status-badge ' + getStatusClass(avgHumidity, 'humidity');
     
-    // Update charts
     updateMonthlyCharts(monthData);
 }
 
-function resetMonthlyStats() {
-    document.getElementById('monthlyRecords').textContent = '0';
-    document.getElementById('monthlyAvgTemp').textContent = '-- °C';
-    document.getElementById('monthlyAvgHumidity').textContent = '-- %';
-    document.getElementById('monthlyAvgPower').textContent = '-- kW';
-    document.getElementById('monthlyMinTemp').textContent = '-- °C';
-    document.getElementById('monthlyMaxTemp').textContent = '-- °C';
-    document.getElementById('monthlyMinHumidity').textContent = '-- %';
-    document.getElementById('monthlyMaxHumidity').textContent = '-- %';
-    document.getElementById('monthlyNormalDays').textContent = '0';
-    document.getElementById('monthlyWarningDays').textContent = '0';
-    document.getElementById('monthlyDangerDays').textContent = '0';
-    document.getElementById('monthlyACIssues').textContent = '0';
-    document.getElementById('monthlyUPSIssues').textContent = '0';
-    document.getElementById('monthlyTempStatus').textContent = '--';
-    document.getElementById('monthlyTempStatus').className = 'status-badge';
-    document.getElementById('monthlyHumidityStatus').textContent = '--';
-    document.getElementById('monthlyHumidityStatus').className = 'status-badge';
-    
-    // Destroy charts if exist
-    if (monthlyTrendChart) {
-        monthlyTrendChart.destroy();
-        monthlyTrendChart = null;
-    }
-    if (monthlyStatusChart) {
-        monthlyStatusChart.destroy();
-        monthlyStatusChart = null;
-    }
+function getAvailableMonths() {
+    const months = [...new Set(monitoringData.map(d => d.date.substring(0, 7)))];
+    return months.sort().reverse();
 }
 
 function updateMonthlyCharts(data) {
-    // Destroy existing charts if they exist
     if (monthlyTrendChart) monthlyTrendChart.destroy();
     if (monthlyStatusChart) monthlyStatusChart.destroy();
     
-    if (!data || data.length === 0) {
-        console.log('No data for monthly charts');
-        return;
-    }
+    if (!data || data.length === 0) return;
     
-    // Group data by date
     const dailyData = {};
     data.forEach(d => {
         if (!dailyData[d.date]) {
@@ -939,7 +622,6 @@ function updateMonthlyCharts(data) {
     const avgTemps = dates.map(d => dailyData[d].temp.reduce((a, b) => a + b, 0) / dailyData[d].temp.length);
     const avgHumidities = dates.map(d => dailyData[d].humidity.reduce((a, b) => a + b, 0) / dailyData[d].humidity.length);
     
-    // Trend Chart
     const trendCtx = document.getElementById('monthlyTrendChart');
     if (!trendCtx) return;
     
@@ -972,23 +654,13 @@ function updateMonthlyCharts(data) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    position: 'top'
-                },
-                title: {
-                    display: true,
-                    text: 'Tren Suhu & Kelembaban Bulanan'
-                }
+                legend: { position: 'top' },
+                title: { display: true, text: 'Tren Suhu & Kelembaban Bulanan' }
             },
-            scales: {
-                y: {
-                    beginAtZero: false
-                }
-            }
+            scales: { y: { beginAtZero: false } }
         }
     });
     
-    // Status Distribution Chart
     let normal = 0, warning = 0, danger = 0;
     data.forEach(d => {
         if (parseFloat(d.temperature) > 28 || parseFloat(d.humidity) > 70) {
@@ -1018,24 +690,33 @@ function updateMonthlyCharts(data) {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: {
-                    display: false
-                },
-                title: {
-                    display: true,
-                    text: 'Distribusi Status'
-                }
+                legend: { display: false },
+                title: { display: true, text: 'Distribusi Status' }
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1
-                    }
-                }
-            }
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
         }
     });
+}
+
+function resetMonthlyStats() {
+    document.getElementById('monthlyRecords').textContent = '0';
+    document.getElementById('monthlyAvgTemp').textContent = '-- °C';
+    document.getElementById('monthlyAvgHumidity').textContent = '-- %';
+    document.getElementById('monthlyAvgPower').textContent = '-- kW';
+    document.getElementById('monthlyMinTemp').textContent = '-- °C';
+    document.getElementById('monthlyMaxTemp').textContent = '-- °C';
+    document.getElementById('monthlyMinHumidity').textContent = '-- %';
+    document.getElementById('monthlyMaxHumidity').textContent = '-- %';
+    document.getElementById('monthlyNormalDays').textContent = '0';
+    document.getElementById('monthlyWarningDays').textContent = '0';
+    document.getElementById('monthlyDangerDays').textContent = '0';
+    document.getElementById('monthlyACIssues').textContent = '0';
+    document.getElementById('monthlyUPSIssues').textContent = '0';
+    document.getElementById('monthlyTempStatus').textContent = '--';
+    document.getElementById('monthlyHumidityStatus').textContent = '--';
+    
+    if (monthlyTrendChart) { monthlyTrendChart.destroy(); monthlyTrendChart = null; }
+    if (monthlyStatusChart) { monthlyStatusChart.destroy(); monthlyStatusChart = null; }
 }
 
 // ==================== TABLE FUNCTIONS ====================
@@ -1149,11 +830,7 @@ function renderPagination(totalItems) {
     
     for (let i = 1; i <= totalPages; i++) {
         if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
-            html += `
-                <button class="${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">
-                    ${i}
-                </button>
-            `;
+            html += `<button class="${i === currentPage ? 'active' : ''}" onclick="changePage(${i})">${i}</button>`;
         } else if (i === currentPage - 2 || i === currentPage + 2) {
             html += '<span>...</span>';
         }
@@ -1208,8 +885,7 @@ async function saveEdit(e) {
     
     if (index === -1) return;
     
-    monitoringData[index] = {
-        ...monitoringData[index],
+    const updatedData = {
         date: document.getElementById('editDate').value,
         time: document.getElementById('editTime').value,
         temperature: parseFloat(document.getElementById('editTemperature').value),
@@ -1220,7 +896,11 @@ async function saveEdit(e) {
         powerUsage: parseFloat(document.getElementById('editPowerUsage').value)
     };
     
-    saveDataToStorage();
+    monitoringData[index] = { ...monitoringData[index], ...updatedData };
+    
+    await updateDataInFirebase(id, updatedData);
+    
+    saveDataToLocal();
     closeModal();
     renderTable();
     updateDashboard();
@@ -1228,13 +908,15 @@ async function saveEdit(e) {
 }
 
 async function deleteData(id) {
-    if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
-        monitoringData = monitoringData.filter(d => d.id !== id);
-        await deleteDataFromDatabase(id);
-        renderTable();
-        updateDashboard();
-        showToast('Data berhasil dihapus!', 'success');
-    }
+    if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+    
+    monitoringData = monitoringData.filter(d => d.id !== id);
+    await deleteDataFromFirebase(id);
+    
+    saveDataToLocal();
+    renderTable();
+    updateDashboard();
+    showToast('Data berhasil dihapus!', 'success');
 }
 
 document.getElementById('closeModal').addEventListener('click', closeModal);
@@ -1242,10 +924,24 @@ document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
 document.getElementById('editForm').addEventListener('submit', saveEdit);
 
 document.getElementById('editModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeModal();
-    }
+    if (e.target === this) closeModal();
 });
+
+// ==================== CLEAR ALL DATA ====================
+
+async function clearAllData() {
+    if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
+        return;
+    }
+    
+    await clearAllDataInFirebase();
+    monitoringData = [];
+    saveDataToLocal();
+    showToast('Semua data berhasil dihapus!');
+    updateDashboard();
+    renderTable();
+    location.reload();
+}
 
 // ==================== EXPORT FUNCTIONS ====================
 
@@ -1259,20 +955,12 @@ function exportToExcel() {
         'Status AC': d.acStatus === 'normal' ? 'Normal' : d.acStatus === 'maintenance' ? 'Maintenance' : 'Rusak',
         'Status UPS': d.upsStatus === 'normal' ? 'Normal' : d.upsStatus === 'low_battery' ? 'Baterai Rendah' : d.upsStatus === 'maintenance' ? 'Maintenance' : 'Rusak',
         'Server Aktif': d.activeServers,
-        'Daya (kW)': d.powerUsage,
-        'Status APAR': d.fireExtinguisher === 'siap' ? 'Siap Pakai' : d.fireExtinguisher === 'expired' ? 'Expired' : 'Perlu Maintenance',
-        'Catatan': d.notes || '-'
+        'Daya (kW)': d.powerUsage
     }));
     
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Data Monitoring');
-    
-    const colWidths = [
-        { wch: 5 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 15 },
-        { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 30 }
-    ];
-    ws['!cols'] = colWidths;
     
     const fileName = `monitoring_server_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(wb, fileName);
@@ -1308,18 +996,9 @@ function exportToPDF() {
         head: [['No', 'Tanggal', 'Waktu', 'Suhu', 'Kelembaban', 'AC', 'UPS', 'Server', 'Daya (kW)']],
         body: tableData,
         startY: 35,
-        styles: {
-            fontSize: 8,
-            cellPadding: 2
-        },
-        headStyles: {
-            fillColor: [37, 99, 235],
-            textColor: 255,
-            fontStyle: 'bold'
-        },
-        alternateRowStyles: {
-            fillColor: [241, 245, 249]
-        }
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [241, 245, 249] }
     });
     
     const pageCount = doc.internal.getNumberOfPages();
@@ -1344,7 +1023,12 @@ async function exportMonthlyToExcel() {
         return;
     }
     
-    const monthData = await getDataByMonth(selectedMonth);
+    let monthData;
+    if (firebaseInitialized) {
+        monthData = await getDataByMonthFromFirebase(selectedMonth);
+    } else {
+        monthData = monitoringData.filter(d => d.date.startsWith(selectedMonth));
+    }
     
     if (monthData.length === 0) {
         showToast('Tidak ada data untuk bulan ini', 'error');
@@ -1367,12 +1051,6 @@ async function exportMonthlyToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Laporan Bulanan');
     
-    const colWidths = [
-        { wch: 5 }, { wch: 20 }, { wch: 10 }, { wch: 12 }, { wch: 15 },
-        { wch: 12 }, { wch: 15 }, { wch: 12 }, { wch: 12 }
-    ];
-    ws['!cols'] = colWidths;
-    
     const fileName = `laporan_bulanan_${selectedMonth}.xlsx`;
     XLSX.writeFile(wb, fileName);
     
@@ -1388,7 +1066,12 @@ async function exportMonthlyToPDF() {
         return;
     }
     
-    const monthData = await getDataByMonth(selectedMonth);
+    let monthData;
+    if (firebaseInitialized) {
+        monthData = await getDataByMonthFromFirebase(selectedMonth);
+    } else {
+        monthData = monitoringData.filter(d => d.date.startsWith(selectedMonth));
+    }
     
     if (monthData.length === 0) {
         showToast('Tidak ada data untuk bulan ini', 'error');
@@ -1409,7 +1092,6 @@ async function exportMonthlyToPDF() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 38);
     
-    // Calculate summary
     const avgTemp = monthData.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / monthData.length;
     const avgHumidity = monthData.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / monthData.length;
     
@@ -1421,7 +1103,6 @@ async function exportMonthlyToPDF() {
     doc.text(`- Suhu Rata-rata: ${avgTemp.toFixed(1)}°C`, 20, 65);
     doc.text(`- Kelembaban Rata-rata: ${avgHumidity.toFixed(1)}%`, 20, 72);
     
-    // Table
     const tableData = monthData.map((d, index) => [
         index + 1,
         formatDate(d.date),
@@ -1437,18 +1118,9 @@ async function exportMonthlyToPDF() {
         head: [['No', 'Tanggal', 'Waktu', 'Suhu', 'Kelembaban', 'AC', 'UPS', 'Server']],
         body: tableData,
         startY: 82,
-        styles: {
-            fontSize: 8,
-            cellPadding: 2
-        },
-        headStyles: {
-            fillColor: [37, 99, 235],
-            textColor: 255,
-            fontStyle: 'bold'
-        },
-        alternateRowStyles: {
-            fillColor: [241, 245, 249]
-        }
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [241, 245, 249] }
     });
     
     const pageCount = doc.internal.getNumberOfPages();
