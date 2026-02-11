@@ -429,6 +429,7 @@ function formatShortDate(dateString) {
 }
 
 function formatMonthYear(monthYear) {
+    if (!monthYear || monthYear.length !== 7) return '';
     const date = new Date(monthYear + '-01');
     return date.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' });
 }
@@ -775,18 +776,27 @@ async function loadMonthlyReports() {
         });
     }
     
-    const selectedMonth = monthSelect.value || (await getAvailableMonths())[0];
-    
-    if (!selectedMonth) {
-        document.getElementById('monthlySummary').innerHTML = '<p>Tidak ada data tersedia</p>';
+    // If no month selected and no data available, show empty state
+    const availableMonths = await getAvailableMonths();
+    if (availableMonths.length === 0) {
+        document.getElementById('monthlySummary').innerHTML = '<p style="text-align: center; padding: 40px; color: var(--text-secondary);">Tidak ada data tersedia</p>';
+        resetMonthlyStats();
         return;
+    }
+    
+    const selectedMonth = monthSelect.value || availableMonths[0];
+    
+    // Ensure the dropdown has a valid selection
+    if (!monthSelect.value && availableMonths.length > 0) {
+        monthSelect.value = availableMonths[0];
     }
     
     // Get data for selected month
     const monthData = await getDataByMonth(selectedMonth);
     
     if (monthData.length === 0) {
-        document.getElementById('monthlySummary').innerHTML = '<p>Tidak ada data untuk bulan ini</p>';
+        document.getElementById('monthlySummary').innerHTML = '<p style="text-align: center; padding: 40px; color: var(--text-secondary);">Tidak ada data untuk bulan ini</p>';
+        resetMonthlyStats();
         return;
     }
     
@@ -839,6 +849,36 @@ async function loadMonthlyReports() {
     
     // Update charts
     updateMonthlyCharts(monthData);
+}
+
+function resetMonthlyStats() {
+    document.getElementById('monthlyRecords').textContent = '0';
+    document.getElementById('monthlyAvgTemp').textContent = '-- °C';
+    document.getElementById('monthlyAvgHumidity').textContent = '-- %';
+    document.getElementById('monthlyAvgPower').textContent = '-- kW';
+    document.getElementById('monthlyMinTemp').textContent = '-- °C';
+    document.getElementById('monthlyMaxTemp').textContent = '-- °C';
+    document.getElementById('monthlyMinHumidity').textContent = '-- %';
+    document.getElementById('monthlyMaxHumidity').textContent = '-- %';
+    document.getElementById('monthlyNormalDays').textContent = '0';
+    document.getElementById('monthlyWarningDays').textContent = '0';
+    document.getElementById('monthlyDangerDays').textContent = '0';
+    document.getElementById('monthlyACIssues').textContent = '0';
+    document.getElementById('monthlyUPSIssues').textContent = '0';
+    document.getElementById('monthlyTempStatus').textContent = '--';
+    document.getElementById('monthlyTempStatus').className = 'status-badge';
+    document.getElementById('monthlyHumidityStatus').textContent = '--';
+    document.getElementById('monthlyHumidityStatus').className = 'status-badge';
+    
+    // Destroy charts if exist
+    if (monthlyTrendChart) {
+        monthlyTrendChart.destroy();
+        monthlyTrendChart = null;
+    }
+    if (monthlyStatusChart) {
+        monthlyStatusChart.destroy();
+        monthlyStatusChart = null;
+    }
 }
 
 function updateMonthlyCharts(data) {
