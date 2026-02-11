@@ -424,6 +424,7 @@ function formatDate(dateString) {
 }
 
 function formatShortDate(dateString) {
+    if (!dateString || dateString === 'Invalid Date') return '';
     const options = { year: 'numeric', month: 'short', day: 'numeric' };
     return new Date(dateString).toLocaleDateString('id-ID', options);
 }
@@ -886,6 +887,11 @@ function updateMonthlyCharts(data) {
     if (monthlyTrendChart) monthlyTrendChart.destroy();
     if (monthlyStatusChart) monthlyStatusChart.destroy();
     
+    if (!data || data.length === 0) {
+        console.log('No data for monthly charts');
+        return;
+    }
+    
     // Group data by date
     const dailyData = {};
     data.forEach(d => {
@@ -902,8 +908,10 @@ function updateMonthlyCharts(data) {
     const avgHumidities = dates.map(d => dailyData[d].humidity.reduce((a, b) => a + b, 0) / dailyData[d].humidity.length);
     
     // Trend Chart
-    const trendCtx = document.getElementById('monthlyTrendChart').getContext('2d');
-    monthlyTrendChart = new Chart(trendCtx, {
+    const trendCtx = document.getElementById('monthlyTrendChart');
+    if (!trendCtx) return;
+    
+    monthlyTrendChart = new Chart(trendCtx.getContext('2d'), {
         type: 'line',
         data: {
             labels: dates.map(d => formatShortDate(d)),
@@ -960,8 +968,10 @@ function updateMonthlyCharts(data) {
         }
     });
     
-    const statusCtx = document.getElementById('monthlyStatusChart').getContext('2d');
-    monthlyStatusChart = new Chart(statusCtx, {
+    const statusCtx = document.getElementById('monthlyStatusChart');
+    if (!statusCtx) return;
+    
+    monthlyStatusChart = new Chart(statusCtx.getContext('2d'), {
         type: 'bar',
         data: {
             labels: ['Normal', 'Warning', 'Danger'],
