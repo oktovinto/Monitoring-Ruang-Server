@@ -37,6 +37,10 @@
                 <i class="fas fa-history"></i>
                 Riwayat
             </button>
+            <button class="nav-tab" data-tab="reports">
+                <i class="fas fa-chart-bar"></i>
+                Laporan
+            </button>
         </nav>
 
         <!-- Main Content -->
@@ -299,6 +303,151 @@
                     <!-- Pagination -->
                     <div class="pagination" id="pagination">
                         <!-- Pagination will be inserted here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reports Section -->
+            <section class="tab-content" id="reports">
+                <div class="reports-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-chart-bar"></i> Laporan Bulanan</h2>
+                        <div class="report-actions">
+                            <select id="monthSelect" class="month-select">
+                                <option value="">Pilih Bulan</option>
+                            </select>
+                            <button id="refreshReports" class="btn btn-secondary">
+                                <i class="fas fa-redo"></i> Refresh
+                            </button>
+                            <button id="exportMonthlyExcel" class="btn btn-success">
+                                <i class="fas fa-file-excel"></i> Export Excel
+                            </button>
+                            <button id="exportMonthlyPDF" class="btn btn-danger">
+                                <i class="fas fa-file-pdf"></i> Export PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Summary Cards -->
+                    <div class="monthly-summary">
+                        <div class="summary-card">
+                            <h4><i class="fas fa-clipboard-list"></i> Total Pencatatan</h4>
+                            <p class="value" id="monthlyRecords">0</p>
+                        </div>
+                        <div class="summary-card">
+                            <h4><i class="fas fa-thermometer-half"></i> Suhu Rata-rata</h4>
+                            <p class="value" id="monthlyAvgTemp">-- °C</p>
+                            <span class="status-badge" id="monthlyTempStatus">--</span>
+                        </div>
+                        <div class="summary-card">
+                            <h4><i class="fas fa-water"></i> Kelembaban Rata-rata</h4>
+                            <p class="value" id="monthlyAvgHumidity">-- %</p>
+                            <span class="status-badge" id="monthlyHumidityStatus">--</span>
+                        </div>
+                        <div class="summary-card">
+                            <h4><i class="fas fa-bolt"></i> Daya Rata-rata</h4>
+                            <p class="value" id="monthlyAvgPower">-- kW</p>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Stats -->
+                    <div class="monthly-stats">
+                        <div class="stat-group">
+                            <h4><i class="fas fa-temperature-high"></i> Suhu</h4>
+                            <div class="stat-row">
+                                <span>Minimum:</span>
+                                <span class="stat-value" id="monthlyMinTemp">-- °C</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Maksimum:</span>
+                                <span class="stat-value" id="monthlyMaxTemp">-- °C</span>
+                            </div>
+                        </div>
+                        <div class="stat-group">
+                            <h4><i class="fas fa-water"></i> Kelembaban</h4>
+                            <div class="stat-row">
+                                <span>Minimum:</span>
+                                <span class="stat-value" id="monthlyMinHumidity">-- %</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Maksimum:</span>
+                                <span class="stat-value" id="monthlyMaxHumidity">-- %</span>
+                            </div>
+                        </div>
+                        <div class="stat-group">
+                            <h4><i class="fas fa-chart-pie"></i> Distribusi Status</h4>
+                            <div class="stat-row">
+                                <span class="status-indicator normal"></span>
+                                <span>Normal:</span>
+                                <span class="stat-value" id="monthlyNormalDays">0 hari</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="status-indicator warning"></span>
+                                <span>Warning:</span>
+                                <span class="stat-value" id="monthlyWarningDays">0 hari</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="status-indicator danger"></span>
+                                <span>Danger:</span>
+                                <span class="stat-value" id="monthlyDangerDays">0 hari</span>
+                            </div>
+                        </div>
+                        <div class="stat-group">
+                            <h4><i class="fas fa-tools"></i> Issues</h4>
+                            <div class="stat-row">
+                                <span>Masalah AC:</span>
+                                <span class="stat-value" id="monthlyACIssues">0</span>
+                            </div>
+                            <div class="stat-row">
+                                <span>Masalah UPS:</span>
+                                <span class="stat-value" id="monthlyUPSIssues">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Charts -->
+                    <div class="charts-container">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-chart-line"></i> Tren Bulanan</h3>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="monthlyTrendChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-chart-bar"></i> Distribusi Status</h3>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="monthlyStatusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Data Table -->
+                    <div class="monthly-table-section">
+                        <h3><i class="fas fa-table"></i> Data Detail Bulan Ini</h3>
+                        <div class="table-container">
+                            <table class="data-table" id="monthlyDataTable">
+                                <thead>
+                                    <tr>
+                                        <th>No</th>
+                                        <th>Tanggal</th>
+                                        <th>Waktu</th>
+                                        <th>Suhu (°C)</th>
+                                        <th>Kelembaban (%)</th>
+                                        <th>Status AC</th>
+                                        <th>Status UPS</th>
+                                        <th>Server Aktif</th>
+                                        <th>Daya (kW)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="monthlyTableBody">
+                                    <!-- Data will be inserted here -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>

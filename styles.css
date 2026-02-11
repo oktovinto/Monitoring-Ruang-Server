@@ -863,3 +863,165 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--secondary-color);
 }
+
+/* Reports Section */
+.reports-section {
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.report-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.month-select {
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    background: var(--card-bg);
+    min-width: 200px;
+}
+
+.monthly-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.summary-card {
+    background: var(--bg-color);
+    padding: 20px;
+    border-radius: var(--radius-sm);
+    text-align: center;
+}
+
+.summary-card h4 {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.summary-card h4 i {
+    color: var(--primary-color);
+}
+
+.summary-card .value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 5px;
+}
+
+.monthly-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-group {
+    background: var(--bg-color);
+    padding: 20px;
+    border-radius: var(--radius-sm);
+}
+
+.stat-group h4 {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stat-group h4 i {
+    color: var(--primary-color);
+}
+
+.stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+.stat-row span:first-child {
+    color: var(--text-secondary);
+}
+
+.stat-value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-indicator.normal {
+    background: var(--success-color);
+}
+
+.status-indicator.warning {
+    background: var(--warning-color);
+}
+
+.status-indicator.danger {
+    background: var(--danger-color);
+}
+
+.monthly-table-section {
+    margin-top: 30px;
+}
+
+.monthly-table-section h3 {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.monthly-table-section h3 i {
+    color: var(--primary-color);
+}
+
+/* Status in summary cards */
+.summary-card .status-badge {
+    margin-top: 5px;
+}
+
+/* Responsive for reports */
+@media (max-width: 768px) {
+    .report-actions {
+        width: 100%;
+    }
+
+    .month-select {
+        width: 100%;
+    }
+
+    .report-actions .btn {
+        flex: 1;
+        justify-content: center;
+    }
+}
