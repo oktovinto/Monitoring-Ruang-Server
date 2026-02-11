@@ -125,15 +125,15 @@ function loadDataFromDatabase() {
         request.onsuccess = () => {
             monitoringData = request.result.sort((a, b) => b.timestamp - a.timestamp);
             
-            // If no data, generate sample data
-            if (monitoringData.length === 0) {
-                monitoringData = generateSampleData();
-                bulkInsertData(monitoringData).then(() => {
-                    resolve();
-                });
-            } else {
-                resolve();
-            }
+            // Do NOT generate sample data - let user start fresh
+            // if (monitoringData.length === 0) {
+            //     monitoringData = generateSampleData();
+            //     bulkInsertData(monitoringData).then(() => {
+            //         resolve();
+            //     });
+            // } else {
+            resolve();
+            // }
         };
         
         request.onerror = (event) => {
@@ -676,6 +676,38 @@ function initializeCharts() {
 function initializeFilters() {
     document.getElementById('applyFilter').addEventListener('click', applyFilters);
     document.getElementById('resetFilter').addEventListener('click', resetFilters);
+    document.getElementById('clearAllData').addEventListener('click', clearAllData);
+}
+
+// Clear all data function
+async function clearAllData() {
+    if (!confirm('Apakah Anda yakin ingin menghapus SEMUA data? Tindakan ini tidak dapat dibatalkan!')) {
+        return;
+    }
+    
+    // Clear IndexedDB
+    if (db) {
+        const transaction = db.transaction([STORE_NAME, MONTHLY_STORE], 'readwrite');
+        transaction.objectStore(STORE_NAME).clear();
+        transaction.objectStore(MONTHLY_STORE).clear();
+        
+        transaction.oncomplete = () => {
+            monitoringData = [];
+            localStorage.removeItem('serverMonitoringData');
+            showToast('Semua data berhasil dihapus!');
+            updateDashboard();
+            renderTable();
+            location.reload();
+        };
+    } else {
+        // Fallback to localStorage
+        monitoringData = [];
+        localStorage.removeItem('serverMonitoringData');
+        showToast('Semua data berhasil dihapus!');
+        updateDashboard();
+        renderTable();
+        location.reload();
+    }
 }
 
 function initializeExportButtons() {
@@ -1439,3 +1471,4 @@ window.changePage = changePage;
 window.closeModal = closeModal;
 window.cancelEdit = cancelEdit;
 window.saveEdit = saveEdit;
+window.clearAllData = clearAllData;
