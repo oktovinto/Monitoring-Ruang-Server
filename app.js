@@ -567,9 +567,31 @@ function initializeTabs() {
 
 function initializeForm() {
     const form = document.getElementById('monitoringForm');
+    const dateInput = document.getElementById('entryDate');
+    
+    // Check if data already exists for selected date
+    dateInput.addEventListener('change', function() {
+        const selectedDate = this.value;
+        const existingData = monitoringData.find(d => d.date === selectedDate);
+        
+        if (existingData) {
+            showToast(`Data untuk tanggal ${formatDate(selectedDate)} sudah ada! Silakan pilih tanggal lain atau edit data yang ada.`, 'error');
+            dateInput.value = '';
+            dateInput.focus();
+        }
+    });
     
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
+        
+        const selectedDate = document.getElementById('entryDate').value;
+        
+        // Check if data already exists for the selected date
+        const existingData = monitoringData.find(d => d.date === selectedDate);
+        if (existingData) {
+            showToast(`Data untuk tanggal ${formatDate(selectedDate)} sudah ada! Silakan pilih tanggal lain atau edit data yang ada.`, 'error');
+            return;
+        }
         
         const formData = {
             id: generateId(),
@@ -1168,7 +1190,21 @@ document.getElementById('editModal').addEventListener('click', function(e) {
 // ==================== EXPORT FUNCTIONS ====================
 
 function exportToExcel() {
-    const exportData = monitoringData.map((d, index) => ({
+    // Filter to only 1 entry per date (keep the latest one for each date)
+    const uniqueDateData = [];
+    const dateMap = new Map();
+    
+    monitoringData.forEach(d => {
+        if (!dateMap.has(d.date)) {
+            dateMap.set(d.date, d);
+            uniqueDateData.push(d);
+        }
+    });
+    
+    // Sort by date descending
+    uniqueDateData.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    const exportData = uniqueDateData.map((d, index) => ({
         'No': index + 1,
         'Tanggal': formatDate(d.date),
         'Waktu': d.time,
@@ -1210,7 +1246,21 @@ function exportToPDF() {
     doc.setFont('helvetica', 'normal');
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 28);
     
-    const tableData = monitoringData.map((d, index) => [
+    // Filter to only 1 entry per date (keep the latest one for each date)
+    const uniqueDateData = [];
+    const dateMap = new Map();
+    
+    monitoringData.forEach(d => {
+        if (!dateMap.has(d.date)) {
+            dateMap.set(d.date, d);
+            uniqueDateData.push(d);
+        }
+    });
+    
+    // Sort by date descending
+    uniqueDateData.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    const tableData = uniqueDateData.map((d, index) => [
         index + 1,
         formatDate(d.date),
         d.time,
@@ -1269,7 +1319,21 @@ async function exportMonthlyToExcel() {
         return;
     }
     
-    const exportData = monthData.map((d, index) => ({
+    // Filter to only 1 entry per date (keep the latest one for each date)
+    const uniqueDateData = [];
+    const dateMap = new Map();
+    
+    monthData.forEach(d => {
+        if (!dateMap.has(d.date)) {
+            dateMap.set(d.date, d);
+            uniqueDateData.push(d);
+        }
+    });
+    
+    // Sort by date descending
+    uniqueDateData.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    const exportData = uniqueDateData.map((d, index) => ({
         'No': index + 1,
         'Tanggal': formatDate(d.date),
         'Waktu': d.time,
@@ -1313,6 +1377,20 @@ async function exportMonthlyToPDF() {
         return;
     }
     
+    // Filter to only 1 entry per date (keep the latest one for each date)
+    const uniqueDateData = [];
+    const dateMap = new Map();
+    
+    monthData.forEach(d => {
+        if (!dateMap.has(d.date)) {
+            dateMap.set(d.date, d);
+            uniqueDateData.push(d);
+        }
+    });
+    
+    // Sort by date descending
+    uniqueDateData.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
@@ -1328,19 +1406,19 @@ async function exportMonthlyToPDF() {
     doc.text(`Dicetak pada: ${new Date().toLocaleDateString('id-ID')}`, 14, 38);
     
     // Calculate summary
-    const avgTemp = monthData.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / monthData.length;
-    const avgHumidity = monthData.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / monthData.length;
+    const avgTemp = uniqueDateData.reduce((sum, d) => sum + parseFloat(d.temperature), 0) / uniqueDateData.length;
+    const avgHumidity = uniqueDateData.reduce((sum, d) => sum + parseFloat(d.humidity), 0) / uniqueDateData.length;
     
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.text('Ringkasan:', 14, 50);
     doc.setFont('helvetica', 'normal');
-    doc.text(`- Total Pencatatan: ${monthData.length}`, 20, 58);
+    doc.text(`- Total Pencatatan: ${uniqueDateData.length}`, 20, 58);
     doc.text(`- Suhu Rata-rata: ${avgTemp.toFixed(1)}°C`, 20, 65);
     doc.text(`- Kelembaban Rata-rata: ${avgHumidity.toFixed(1)}%`, 20, 72);
     
     // Table
-    const tableData = monthData.map((d, index) => [
+    const tableData = uniqueDateData.map((d, index) => [
         index + 1,
         formatDate(d.date),
         d.time,
