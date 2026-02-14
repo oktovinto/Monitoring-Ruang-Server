@@ -77,8 +77,7 @@ function initializeDatabase() {
 function addDataToDatabase(data) {
     return new Promise((resolve, reject) => {
         if (!db) {
-            // Fallback to localStorage
-            monitoringData.unshift(data);
+            // Fallback to localStorage - data already added to monitoringData in form handler
             saveDataToStorage();
             resolve();
             return;
